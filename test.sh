@@ -13,7 +13,7 @@ if [[ "$#" -ne 1 ]]; then
 fi
 
 if ! [[ "$1" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
-	echo "Invalid format of altitudes. Expecting '^[0-9]+(,[0-9]+)*$'." >&2
+	echo 'Invalid format of altitudes. Expecting "^[0-9]+(,[0-9]+)*$".' >&2
 	exit 1
 fi
 
