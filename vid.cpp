@@ -13,6 +13,7 @@
 #include <cmath>
 #include <vector>
 #include <limits>
+#include <climits>
 #include <mpi.h>
 
 #ifdef DEBUG
@@ -23,7 +24,7 @@
 #define COMM MPI_COMM_WORLD /// Default MPI communicator.
 #define MASTER 0 /// A rank of the master process.
 #define TAG 0 /// An MPI tag used for the transmission of messages.
-#define EMPTY numeric_limits<int>::min() /// An empty value of an MPI message.
+#define EMPTY INT_MIN /// An empty value of an MPI message.
 
 
 using namespace std;
@@ -188,7 +189,7 @@ auto max_prescan(
 	if (procs_count == 1)
 	{
 		max_angles[1] = max_angles[0];
-		max_angles[0] = numeric_limits<double>::min();
+		max_angles[0] = numeric_limits<double>::lowest();
 		return;
 	}
 
@@ -224,7 +225,7 @@ auto max_prescan(
 	// down-sweep
 	if (rank == procs_count - 1)
 	{
-		max_angles[1] = numeric_limits<double>::min();
+		max_angles[1] = numeric_limits<double>::lowest();
 	}
 	for (int d = static_cast<int>(log2(procs_count)) - 1; d >= 0; d--)
 	{
