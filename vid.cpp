@@ -158,7 +158,7 @@ auto calculate_angles(double angles[], const int alts[], const int rank) -> void
 {
 	for (size_t i = 0; i < 2; i++)
 	{
-		angles[i] = .0;
+		angles[i] = numeric_limits<double>::lowest();
 		if (alts[i + 1] != EMPTY)
 		{
 			const auto length = static_cast<double>(rank * 2 + 1 + i);
