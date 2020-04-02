@@ -393,22 +393,24 @@ auto main(int argc, char *argv[]) -> int
 	int alts[3];
 	receive_alts(alts);
 
-	double angles[2];
-	calculate_angles(angles, alts, rank);
-
-	double max_angles[2];
 #ifdef DEBUG
 	chrono::time_point<chrono::high_resolution_clock> start, end;
 	MPI_Barrier(COMM);
 	if (rank == MASTER) start = chrono::high_resolution_clock::now();
 #endif
+
+	double angles[2];
+	calculate_angles(angles, alts, rank);
+
+	double max_angles[2];
 	max_prescan(max_angles, angles, rank, procs_count);
+
+	send_visibility(angles, max_angles, alts);
+
 #ifdef DEBUG
 	MPI_Barrier(COMM);
 	if (rank == MASTER) end = chrono::high_resolution_clock::now();
 #endif
-
-	send_visibility(angles, max_angles, alts);
 
 	bool *const visibility = new bool[alts_count];
 	receive_visibility(visibility, rank, alts_count);
