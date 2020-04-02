@@ -86,13 +86,13 @@ auto send_alts(
 	}
 	const size_t alts_count = alts.size() - 1;
 
-	int expected_procs_count = 1;
+	int expected_procs_count = alts_count;
 	if (alts_count > 1)
 	{
 		expected_procs_count =
 			static_cast<int>(pow(2, ceil(log(alts_count) / log(2))) / 2);
 	}
-	if (procs_count != expected_procs_count)
+	if (alts_count > 0 && procs_count != expected_procs_count)
 	{
 		cerr << "Error: the expected number of processes is "
 			<< expected_procs_count << " but the current number of processes"

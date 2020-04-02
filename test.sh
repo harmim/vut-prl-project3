@@ -19,7 +19,7 @@ if ! [[ "$1" =~ ^-?[0-9]+(,-?[0-9]+)*$ ]]; then
 fi
 
 ALTS_COUNT=`echo "$1" | grep -o ',' | wc -l | xargs`
-if [[ "$ALTS_COUNT" -le 1 ]]; then NP=1
+if [[ "$ALTS_COUNT" -le 1 ]]; then NP="$ALTS_COUNT"
 else
 	ALTS_COUNT_ROUNDED=`echo "l($ALTS_COUNT) / l(2)" | bc -l`
 	ALTS_COUNT_ROUNDED=`python -c "from math import ceil; \
