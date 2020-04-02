@@ -12,6 +12,7 @@
 #include <string>
 #include <cmath>
 #include <vector>
+#include <limits>
 #include <mpi.h>
 
 #ifdef DEBUG
@@ -22,7 +23,7 @@
 #define COMM MPI_COMM_WORLD /// Default MPI communicator.
 #define MASTER 0 /// A rank of the master process.
 #define TAG 0 /// An MPI tag used for the transmission of messages.
-#define EMPTY (-1) /// An empty value of an MPI message.
+#define EMPTY numeric_limits<int>::min() /// An empty value of an MPI message.
 
 
 using namespace std;
@@ -39,8 +40,22 @@ auto MPI_error() -> void
 }
 
 
+/**
+ * The master process parses and validates input altitudes, checks the current
+ * number of processes, and sends the altitudes to the others processes.
+ *
+ * @param rank A rank of a process.
+ * @param procs_count The number of all processes.
+ * @param argc The number of input arguments.
+ * @param argv An array of input arguments.
+ * @return Returns the number of altitudes (expect the first one - a place of
+ *         observation).
+ */
 auto send_alts(
-	const int rank, const int procs_count, const int argc, char *const argv[]
+	const int rank,
+	const int procs_count,
+	const int argc,
+	const char *const argv[]
 ) -> size_t
 {
 	if (rank != MASTER)
@@ -55,20 +70,20 @@ auto send_alts(
 		MPI_Abort(COMM, EXIT_FAILURE);
 	}
 
-	if (!regex_match(argv[1], regex("^[0-9]+(,[0-9]+)*$")))
+	if (!regex_match(argv[1], regex("^-?[0-9]+(,-?[0-9]+)*$")))
 	{
-		cerr << "Error: invalid format of altitudes, "
-			"expecting '^[0-9]+(,[0-9]+)*$'." << endl;
+		cerr << "Error: invalid format of altitudes,"
+			" expecting '^-?[0-9]+(,-?[0-9]+)*$'." << endl;
 		MPI_Abort(COMM, EXIT_FAILURE);
 	}
 
 	vector<int> alts;
 	stringstream alts_stream(argv[1]);
-	for (string alt_s; getline(alts_stream, alt_s, ',');)
+	for (string alt; getline(alts_stream, alt, ','); )
 	{
-		alts.push_back(stoi(alt_s));
+		alts.push_back(stoi(alt));
 	}
-	size_t alts_count = alts.size() - 1;
+	const size_t alts_count = alts.size() - 1;
 
 	int expected_procs_count = 1;
 	if (alts_count > 1)
@@ -79,8 +94,8 @@ auto send_alts(
 	if (procs_count != expected_procs_count)
 	{
 		cerr << "Error: the expected number of processes is "
-			<< expected_procs_count << " but the current number of processes "
-			"is " << procs_count << "." << endl;
+			<< expected_procs_count << " but the current number of processes"
+			" is " << procs_count << "." << endl;
 		MPI_Abort(COMM, EXIT_FAILURE);
 	}
 
@@ -114,6 +129,11 @@ auto send_alts(
 }
 
 
+/**
+ * Receives altitudes from the master process.
+ *
+ * @param alts Received altitudes.
+ */
 auto receive_alts(int alts[]) -> void
 {
 	for (size_t i = 0; i < 3; i++)
@@ -126,6 +146,13 @@ auto receive_alts(int alts[]) -> void
 }
 
 
+/**
+ * Calculates vertical angles from altitudes.
+ *
+ * @param angles Calculated vertical angles.
+ * @param alts Altitudes for the calculation of vertical angles.
+ * @param rank A rank of a process.
+ */
 auto calculate_angles(double angles[], const int alts[], const int rank) -> void
 {
 	for (size_t i = 0; i < 2; i++)
@@ -133,16 +160,21 @@ auto calculate_angles(double angles[], const int alts[], const int rank) -> void
 		angles[i] = .0;
 		if (alts[i + 1] != EMPTY)
 		{
-			angles[i] =
-				atan(
-					(alts[i + 1] - alts[0]) /
-					static_cast<double>((rank * 2 + 1 + i))
-				);
+			const auto length = static_cast<double>(rank * 2 + 1 + i);
+			angles[i] = atan((alts[i + 1] - alts[0]) / length);
 		}
 	}
 }
 
 
+/**
+ * Calculates maximal previous vertical angles (prescan).
+ *
+ * @param max_angles Calculated maximal previous vertical angles.
+ * @param angles Vertical angles of points.
+ * @param rank A rank of a process.
+ * @param procs_count The number of all processes.
+ */
 auto max_prescan(
 	double max_angles[],
 	const double angles[],
@@ -152,86 +184,94 @@ auto max_prescan(
 {
 	max_angles[0] = angles[0];
 	max_angles[1] = angles[1];
-	max_angles[1] = max(max_angles[0], max_angles[1]);
-	if (procs_count > 1)
+
+	if (procs_count == 1)
 	{
-		int step, prev_step, r;
-		double neigh;
-
-		// up-sweep
-		for (int d = 0; d <= log2(procs_count) - 1; d++)
-		{
-			step = pow(2, d + 1);
-			prev_step = pow(2, d);
-
-			if (!((rank + 1) % step))
-			{
-				r = rank - prev_step;
-				if (MPI_Recv(&neigh, 1, MPI_DOUBLE, r, TAG, COMM, nullptr))
-				{
-					MPI_error();
-				}
-				max_angles[1] = max(max_angles[1], neigh);
-			}
-			else if (!((rank + 1) % prev_step))
-			{
-				r = rank + prev_step;
-				if (MPI_Send(&max_angles[1], 1, MPI_DOUBLE, r, TAG, COMM))
-				{
-					MPI_error();
-				}
-			}
-		}
-
-		// down-seep
-		if (rank == procs_count - 1)
-		{
-			max_angles[1] = .0;
-		}
-		for (int d = static_cast<int>(log2(procs_count)) - 1; d >= 0; d--)
-		{
-			step = pow(2, d + 1);
-			prev_step = pow(2, d);
-
-			if (!((rank + 1) % step))
-			{
-				r = rank - prev_step;
-
-				if (MPI_Send(&max_angles[1], 1, MPI_DOUBLE, r, TAG, COMM))
-				{
-					MPI_error();
-				}
-
-				if (MPI_Recv(&neigh, 1, MPI_DOUBLE, r, TAG, COMM, nullptr))
-				{
-					MPI_error();
-				}
-				max_angles[1] = max(max_angles[1], neigh);
-			}
-			else if (!((rank + 1) % prev_step))
-			{
-				r = rank + prev_step;
-
-				if (MPI_Recv(&neigh, 1, MPI_DOUBLE, r, TAG, COMM, nullptr))
-				{
-					MPI_error();
-				}
-
-				if (MPI_Send(&max_angles[1], 1, MPI_DOUBLE, r, TAG, COMM))
-				{
-					MPI_error();
-				}
-
-				max_angles[1] = neigh;
-			}
-		}
-		double t = max_angles[0];
-		max_angles[0] = max_angles[1];
-		max_angles[1] = max(max_angles[1], t);
+		max_angles[1] = max_angles[0];
+		max_angles[0] = numeric_limits<double>::min();
+		return;
 	}
+
+	int step, prev_step, r;
+	double neigh;
+
+	// up-sweep
+	max_angles[1] = max(max_angles[0], max_angles[1]);
+	for (int d = 0; d <= log2(procs_count) - 1; d++)
+	{
+		step = pow(2, d + 1);
+		prev_step = pow(2, d);
+
+		if (!((rank + 1) % step))
+		{
+			r = rank - prev_step;
+			if (MPI_Recv(&neigh, 1, MPI_DOUBLE, r, TAG, COMM, nullptr))
+			{
+				MPI_error();
+			}
+			max_angles[1] = max(max_angles[1], neigh);
+		}
+		else if (!((rank + 1) % prev_step))
+		{
+			r = rank + prev_step;
+			if (MPI_Send(&max_angles[1], 1, MPI_DOUBLE, r, TAG, COMM))
+			{
+				MPI_error();
+			}
+		}
+	}
+
+	// down-sweep
+	if (rank == procs_count - 1)
+	{
+		max_angles[1] = numeric_limits<double>::min();
+	}
+	for (int d = static_cast<int>(log2(procs_count)) - 1; d >= 0; d--)
+	{
+		step = pow(2, d + 1);
+		prev_step = pow(2, d);
+
+		if (!((rank + 1) % step))
+		{
+			r = rank - prev_step;
+			if (MPI_Send(&max_angles[1], 1, MPI_DOUBLE, r, TAG, COMM))
+			{
+				MPI_error();
+			}
+			if (MPI_Recv(&neigh, 1, MPI_DOUBLE, r, TAG, COMM, nullptr))
+			{
+				MPI_error();
+			}
+			max_angles[1] = max(max_angles[1], neigh);
+		}
+		else if (!((rank + 1) % prev_step))
+		{
+			r = rank + prev_step;
+			if (MPI_Recv(&neigh, 1, MPI_DOUBLE, r, TAG, COMM, nullptr))
+			{
+				MPI_error();
+			}
+			if (MPI_Send(&max_angles[1], 1, MPI_DOUBLE, r, TAG, COMM))
+			{
+				MPI_error();
+			}
+			max_angles[1] = neigh;
+		}
+	}
+	const double t = max_angles[0];
+	max_angles[0] = max_angles[1];
+	max_angles[1] = max(max_angles[1], t);
 }
 
 
+/**
+ * Determines whether points are visible and sends this visibility to the
+ * master process.
+ *
+ * @param angles Vertical angles of points.
+ * @param max_angles Maximal previous vertical angles.
+ * @param alts Altitudes of points.
+ */
 auto send_visibility(
 	const double angles[], const double max_angles[], const int alts[]
 ) -> void
@@ -256,6 +296,13 @@ auto send_visibility(
 }
 
 
+/**
+ * Receives the visibility of points from all processes.
+ *
+ * @param visibility The received visibility of all points.
+ * @param rank A rank of a process.
+ * @param alts_count The number of altitudes.
+ */
 auto receive_visibility(
 	bool visibility[], const int rank, const size_t alts_count
 ) -> void
@@ -286,6 +333,13 @@ auto receive_visibility(
 }
 
 
+/**
+ * Prints given visibilities to the standard output.
+ *
+ * @param visibility Visibilities to be printed.
+ * @param rank A rank of a process.
+ * @param alts_count The number of altitudes.
+ */
 auto print_visibility(
 	const bool visibility[], const int rank, const size_t alts_count
 ) -> void
@@ -304,6 +358,14 @@ auto print_visibility(
 }
 
 
+/**
+ * The entry point of the program.
+ *
+ * @param argc The number of input arguments.
+ * @param argv An array of input arguments.
+ * @return Returns EXIT_SUCCESS if the program succeeded, EXIT_FAILURE
+ *         otherwise.
+ */
 auto main(int argc, char *argv[]) -> int
 {
 	if (MPI_Init(&argc, &argv))

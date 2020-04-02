@@ -8,12 +8,13 @@ BUILD_OPTIONS='-std=c++14'
 RUN_OPTIONS='-q'
 
 if [[ "$#" -ne 1 ]]; then
-	echo "Expecting one argument: $0 altitudes" >&2
+	echo "Error: expecting one argument: $0 altitudes" >&2
 	exit 1
 fi
 
-if ! [[ "$1" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
-	echo 'Invalid format of altitudes. Expecting "^[0-9]+(,[0-9]+)*$".' >&2
+if ! [[ "$1" =~ ^-?[0-9]+(,-?[0-9]+)*$ ]]; then
+	echo 'Error: invalid format of altitudes, expecting' \
+		"'^-?[0-9]+(,-?[0-9]+)*$'." >&2
 	exit 1
 fi
 
@@ -22,11 +23,11 @@ if [[ "$ALTS_COUNT" -le 1 ]]; then NP=1
 else
 	ALTS_COUNT_ROUNDED=`echo "l($ALTS_COUNT) / l(2)" | bc -l`
 	ALTS_COUNT_ROUNDED=`python -c "from math import ceil; \
-		print int(ceil($ALTS_COUNT_ROUNDED))"`
+		print(int(ceil($ALTS_COUNT_ROUNDED)))"`
 	NP=`echo "scale=0; 2^$ALTS_COUNT_ROUNDED / 2" | bc -l`
 fi
 
-if [[ `uname -s` = "Darwin" ]]; then
+if [[ `uname -s` = 'Darwin' ]]; then
 	export OMPI_MCA_btl='self,tcp'
 	export PMIX_MCA_gds='^ds12'
 	RUN_OPTIONS="$RUN_OPTIONS --oversubscribe"
