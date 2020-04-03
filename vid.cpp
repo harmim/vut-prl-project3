@@ -277,7 +277,7 @@ auto send_visibility(
 	const double angles[], const double max_angles[], const int alts[]
 ) -> void
 {
-	if (alts[0] == EMPTY)
+	if (alts[1] == EMPTY)
 	{
 		return;
 	}
